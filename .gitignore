@@ -79,3 +79,9 @@ lint/outputs/
 lint/tmp/
 # lint/reports/
 
+gradle-wrapper.jar
+gradle-wrapper.properties
+.idea/codeStyles/Project.xml
+.idea/codeStyles/codeStyleConfig.xml
+.idea/misc.xml
+.idea/runConfigurations.xml
