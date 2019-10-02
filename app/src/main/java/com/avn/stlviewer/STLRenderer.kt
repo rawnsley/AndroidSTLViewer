@@ -63,7 +63,8 @@ class STLRenderer(val context : Context) : GLSurfaceView.Renderer {
 
     }
 
-    private var program : Int = 0
+    private var program0 : Int = 0
+    private var program1 : Int = 0
     private var mvpMatrixHandle: Int = 0
 
     private var vao : Int = 0
@@ -98,33 +99,52 @@ class STLRenderer(val context : Context) : GLSurfaceView.Renderer {
 
         GLES20.glEnable(GLES20.GL_DEPTH_TEST)
 
-        // Load program
+        val result = IntArray(1)
+
+        // Load programs
 
         val vertShaderHandle = compileShader(GLES31.GL_VERTEX_SHADER, context.assets.open("shader.vert").bufferedReader().use { it.readText() })
-        val fragShaderHandle = compileShader(GLES31.GL_FRAGMENT_SHADER, context.assets.open("shader.frag").bufferedReader().use { it.readText() })
+        val fragShader0Handle = compileShader(GLES31.GL_FRAGMENT_SHADER, context.assets.open("shader0.frag").bufferedReader().use { it.readText() })
+        val fragShader1Handle = compileShader(GLES31.GL_FRAGMENT_SHADER, context.assets.open("shader1.frag").bufferedReader().use { it.readText() })
 
-        program = GLES31.glCreateProgram()
-        GLES31.glAttachShader(program, vertShaderHandle)
-        GLES31.glAttachShader(program, fragShaderHandle)
+        program0 = GLES31.glCreateProgram()
+        GLES31.glAttachShader(program0, vertShaderHandle)
+        GLES31.glAttachShader(program0, fragShader0Handle)
         assertNoGlError()
 
-        // Link program
-        GLES31.glLinkProgram(program)
+        // Link program 0
+        GLES31.glLinkProgram(program0)
         assertNoGlError()
         // Check for compilation errors
-        val result = IntArray(1)
-        GLES31.glGetProgramiv (program, GLES31.GL_LINK_STATUS, result, 0)
+        GLES31.glGetProgramiv (program0, GLES31.GL_LINK_STATUS, result, 0)
         if (result [0] == GLES31.GL_FALSE) {
-            throw Exception ("Error in linking program: ${GLES31.glGetProgramInfoLog (program)}")
+            throw Exception ("Error in linking program: ${GLES31.glGetProgramInfoLog (program0)}")
         }
         assertNoGlError()
 
+        program1 = GLES31.glCreateProgram()
+        GLES31.glAttachShader(program1, vertShaderHandle)
+        GLES31.glAttachShader(program1, fragShader1Handle)
+        assertNoGlError()
+
+        // Link program 1
+        GLES31.glLinkProgram(program1)
+        assertNoGlError()
+        // Check for compilation errors
+        GLES31.glGetProgramiv (program1, GLES31.GL_LINK_STATUS, result, 0)
+        if (result [0] == GLES31.GL_FALSE) {
+            throw Exception ("Error in linking program: ${GLES31.glGetProgramInfoLog (program1)}")
+        }
+        assertNoGlError()
+
+
         // Bind any uniforms here
-        mvpMatrixHandle = GLES20.glGetUniformLocation(program, "mvpMatrix")
+        mvpMatrixHandle = GLES20.glGetUniformLocation(program0, "mvpMatrix")
 
         // Shaders no longer required once the program is linked
         glDeleteShader(vertShaderHandle)
-        glDeleteShader(fragShaderHandle)
+        glDeleteShader(fragShader0Handle)
+        glDeleteShader(fragShader1Handle)
 
         // Load sample texture
 
@@ -212,7 +232,7 @@ class STLRenderer(val context : Context) : GLSurfaceView.Renderer {
 
         glBindBuffer(GL_ARRAY_BUFFER, vertexBuffer)
         glBufferData(GL_ARRAY_BUFFER, vertexCount * 3 * 4, asset.verts, GL_STATIC_DRAW)
-        val vPosition = GLES20.glGetAttribLocation(program, "vPosition")
+        val vPosition = GLES20.glGetAttribLocation(program0, "vPosition")
         glEnableVertexAttribArray(vPosition)
         glVertexAttribPointer(vPosition, 3, GL_FLOAT, false, 0, 0)
 
@@ -220,7 +240,7 @@ class STLRenderer(val context : Context) : GLSurfaceView.Renderer {
 
         glBindBuffer(GL_ARRAY_BUFFER, normalBuffer)
         glBufferData(GL_ARRAY_BUFFER, vertexCount * 3 * 4, asset.norms, GL_STATIC_DRAW)
-        val vNormal = GLES20.glGetAttribLocation(program, "vNormal")
+        val vNormal = GLES20.glGetAttribLocation(program0, "vNormal")
         glEnableVertexAttribArray(vNormal)
         glVertexAttribPointer(vNormal, 3, GL_FLOAT, false, 0, 0)
 
@@ -228,15 +248,15 @@ class STLRenderer(val context : Context) : GLSurfaceView.Renderer {
 
         glBindBuffer(GL_ARRAY_BUFFER, colorBuffer)
         glBufferData(GL_ARRAY_BUFFER, vertexCount * 3 * 4, asset.norms, GL_STATIC_DRAW)
-        val vColor = GLES20.glGetAttribLocation(program, "vColor")
+        val vColor = GLES20.glGetAttribLocation(program0, "vColor")
         glEnableVertexAttribArray(vColor)
         glVertexAttribPointer(vColor, 3, GL_FLOAT, false, 0, 0)
 
         // TexCoords (from normals)
 
         glBindBuffer(GL_ARRAY_BUFFER, texCoordBuffer)
-        glBufferData(GL_ARRAY_BUFFER, vertexCount * 2 * 4, asset.verts, GL_STATIC_DRAW)
-        val vTexCoord = GLES20.glGetAttribLocation(program, "vTexCoord")
+        glBufferData(GL_ARRAY_BUFFER, vertexCount * 2 * 4, asset.norms, GL_STATIC_DRAW)
+        val vTexCoord = GLES20.glGetAttribLocation(program0, "vTexCoord")
         glEnableVertexAttribArray(vTexCoord)
         glVertexAttribPointer(vTexCoord, 2, GL_FLOAT, false, 0, 0)
 
@@ -277,8 +297,6 @@ class STLRenderer(val context : Context) : GLSurfaceView.Renderer {
         // Is rendering ready?
         if(canRender) {
 
-            glUseProgram(program)
-
             // Set the camera position
             Matrix.setLookAtM(viewMatrix, 0, 0f, 0f, -1f, 0f, 0f, 0f, 0f, 1.0f, 0.0f)
 
@@ -286,6 +304,8 @@ class STLRenderer(val context : Context) : GLSurfaceView.Renderer {
             GLES20.glBindTexture(GLES20.GL_TEXTURE_2D, textureHandle)
 
             // Render 0
+
+            glUseProgram(program0)
 
             // Combine the projection and camera view transformation
             Matrix.multiplyMM(mvpMatrix, 0, projectionMatrix, 0, viewMatrix, 0)
@@ -306,6 +326,8 @@ class STLRenderer(val context : Context) : GLSurfaceView.Renderer {
             glBindVertexArray(0)
 
             // Render 1
+
+            glUseProgram(program1)
 
             // Combine the projection and camera view transformation
             Matrix.multiplyMM(mvpMatrix, 0, projectionMatrix, 0, viewMatrix, 0)
