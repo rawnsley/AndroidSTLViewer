@@ -47,12 +47,16 @@ class STLRenderer(val context : Context, val surfaceView: SurfaceView) {
     // Should be pretty obvious :)
     private lateinit var camera: Camera
 
-    private lateinit var material: Material
-    private lateinit var materialInstance: MaterialInstance
+    private lateinit var material0: Material
+    private lateinit var materialInstance0: MaterialInstance
+
+    private lateinit var material1: Material
+    private lateinit var materialInstance1: MaterialInstance
 
     private lateinit var baseColor: Texture
 
-    private lateinit var mesh: Mesh
+    private lateinit var mesh0: Mesh
+    private lateinit var mesh1: Mesh
 
     // Filament entity representing a renderable object
     @Entity
@@ -137,10 +141,12 @@ class STLRenderer(val context : Context, val surfaceView: SurfaceView) {
         val stlAsset = STLAsset(mBuffer)
         Log.i("TAG", "STL load complete")
 
-        mesh = loadMesh(engine, stlAsset, materialInstance)
+        mesh0 = loadMesh(engine, stlAsset, materialInstance0)
+        mesh1 = loadMesh(engine, stlAsset, materialInstance1)
 
-        // Add the entity to the scene to render it
-        scene.addEntity(mesh.renderable)
+        // Add the entites to the scene to render it
+        scene.addEntity(mesh0.renderable)
+        scene.addEntity(mesh1.renderable)
 
         // Set translation and scale factors to get the model in the middle of the view
         translation = -stlAsset.bounds.center
@@ -162,7 +168,7 @@ class STLRenderer(val context : Context, val surfaceView: SurfaceView) {
             .castShadows(false)
             .build(engine, light)
         scene.addEntity(light)
-        camera.setExposure(16.0f, 1.0f / 125.0f, 10.0f)
+        camera.setExposure(16.0f, 1.0f / 125.0f, 100.0f)
     }
 
     private fun loadMaterial() {
@@ -171,7 +177,50 @@ class STLRenderer(val context : Context, val surfaceView: SurfaceView) {
         //val shadingModel = MaterialBuilder.Shading.LIT
         val shadingModel = MaterialBuilder.Shading.UNLIT
 
-        val mb = MaterialBuilder()
+        // Background material
+
+        val mb0 = MaterialBuilder()
+            .platform(MaterialBuilder.Platform.MOBILE)
+            .optimization(MaterialBuilder.Optimization.NONE)
+            .targetApi(MaterialBuilder.TargetApi.OPENGL)
+            .samplerParameter(
+                MaterialBuilder.SamplerType.SAMPLER_2D,
+                MaterialBuilder.SamplerFormat.FLOAT,
+                MaterialBuilder.SamplerPrecision.DEFAULT,
+                "baseColorMap"
+            )
+            .require(MaterialBuilder.VertexAttribute.COLOR)
+            .require(MaterialBuilder.VertexAttribute.UV0)
+            .shading(shadingModel)
+
+        if (shadingModel == MaterialBuilder.Shading.LIT) {
+            val sb = """
+                void material(inout MaterialInputs material) { 
+                    prepareMaterial(material); 
+                    material.baseColor = getColor();
+                    material.roughness = 0.25;
+                }
+            """
+            mb0.material(sb)
+        } else {
+            val sb = """
+                void material(inout MaterialInputs material) { 
+                    prepareMaterial(material); 
+                    material.baseColor = getColor();
+                }
+            """
+            mb0.material(sb)
+        }
+
+        val materialPackage0 = mb0.build()
+        if (!materialPackage0.isValid) {
+            throw Exception("Invalid MaterialPackage")
+        }
+        material0 = Material.Builder().payload(materialPackage0.buffer, materialPackage0.buffer.limit()).build(engine)
+
+        // Foreground material
+
+        val mb1 = MaterialBuilder()
             .platform(MaterialBuilder.Platform.MOBILE)
             .optimization(MaterialBuilder.Optimization.NONE)
             .targetApi(MaterialBuilder.TargetApi.OPENGL)
@@ -190,32 +239,34 @@ class STLRenderer(val context : Context, val surfaceView: SurfaceView) {
             val sb = """
                 void material(inout MaterialInputs material) { 
                     prepareMaterial(material); 
-                    material.baseColor = texture(materialParams_baseColorMap, getUV0()) + getColor();
-                    material.roughness = 0.1;
+                    material.baseColor = texture(materialParams_baseColorMap, getUV0());
+                    material.roughness = 0.25;
                 }
             """
-            mb.material(sb)
+            mb1.material(sb)
         } else {
             val sb = """
                 void material(inout MaterialInputs material) { 
                     prepareMaterial(material); 
-                    material.baseColor = texture(materialParams_baseColorMap, getUV0()) + getColor();
+                    material.baseColor = texture(materialParams_baseColorMap, getUV0());
                 }
             """
-            mb.material(sb)
+            mb1.material(sb)
         }
 
-        val materialPackage = mb.build()
-        if (!materialPackage.isValid) {
+        val materialPackage1 = mb1.build()
+        if (!materialPackage1.isValid) {
             throw Exception("Invalid MaterialPackage")
         }
-        material = Material.Builder().payload(materialPackage.buffer, materialPackage.buffer.limit()).build(engine)
+        material1 = Material.Builder().payload(materialPackage1.buffer, materialPackage1.buffer.limit()).build(engine)
+
     }
 
     private fun setupMaterial() {
         Log.i(TAG, "setupMaterial")
         // Create an instance of the material to set different parameters on it
-        materialInstance = material.createInstance()
+        materialInstance0 = material0.createInstance()
+        materialInstance1 = material1.createInstance()
 
         // Note that the textures are stored in drawable-nodpi to prevent the system
         // from automatically resizing them based on the display's density
@@ -228,7 +279,8 @@ class STLRenderer(val context : Context, val surfaceView: SurfaceView) {
         sampler.wrapModeS = TextureSampler.WrapMode.REPEAT
         sampler.wrapModeT = TextureSampler.WrapMode.REPEAT
 
-        materialInstance.setParameter("baseColorMap", baseColor, sampler)
+        materialInstance0.setParameter("baseColorMap", baseColor, sampler)
+        materialInstance1.setParameter("baseColorMap", baseColor, sampler)
     }
 
     fun resume() {
@@ -253,12 +305,15 @@ class STLRenderer(val context : Context, val surfaceView: SurfaceView) {
         engine.flushAndWait()
 
         // Cleanup all resources
-        destroyMesh(engine, mesh)
+        destroyMesh(engine, mesh0)
+        destroyMesh(engine, mesh1)
         engine.destroyTexture(baseColor)
         engine.destroyEntity(light)
         engine.destroyRenderer(renderer)
-        engine.destroyMaterialInstance(materialInstance)
-        engine.destroyMaterial(material)
+        engine.destroyMaterialInstance(materialInstance0)
+        engine.destroyMaterialInstance(materialInstance1)
+        engine.destroyMaterial(material0)
+        engine.destroyMaterial(material1)
         engine.destroyView(view)
         engine.destroyScene(scene)
         engine.destroyCamera(camera)
@@ -288,10 +343,18 @@ class STLRenderer(val context : Context, val surfaceView: SurfaceView) {
             if (uiHelper.isReadyToRender) {
 
                 // Rotate, scale, and center the model
-                Matrix.setRotateM(modelMatrix, 0, (frameTimeNanos.toDouble() / 100_000_000.0).toFloat(), 0.5f, 1f, 0f)
+                Matrix.setIdentityM(modelMatrix, 0)
+                Matrix.rotateM(modelMatrix, 0, (frameTimeNanos.toDouble() / 49_997_117.0).toFloat(), 1f, 0.5f, 0f)
                 Matrix.scaleM(modelMatrix, 0, scale, scale, scale)
                 Matrix.translateM(modelMatrix, 0, translation.x, translation.y, translation.z)
-                engine.transformManager.setTransform(engine.transformManager.getInstance(mesh.renderable), modelMatrix)
+                engine.transformManager.setTransform(engine.transformManager.getInstance(mesh0.renderable), modelMatrix)
+
+                // Rotate, scale, and center the model
+                Matrix.setIdentityM(modelMatrix, 0)
+                Matrix.rotateM(modelMatrix, 0, (frameTimeNanos.toDouble() / 100_000_049.0).toFloat(), -0.7f, 0.25f, 0.1f)
+                Matrix.scaleM(modelMatrix, 0, scale, scale, scale)
+                Matrix.translateM(modelMatrix, 0, translation.x, translation.y, translation.z)
+                engine.transformManager.setTransform(engine.transformManager.getInstance(mesh1.renderable), modelMatrix)
 
                 if (renderer.beginFrame(swapChain!!)) {
                     renderer.render(view)
@@ -329,7 +392,7 @@ class STLRenderer(val context : Context, val surfaceView: SurfaceView) {
 
         override fun onResized(width: Int, height: Int) {
             val aspect = width.toDouble() / height.toDouble()
-            camera.setProjection(30.0, aspect, 0.1, 1_000.0, Camera.Fov.VERTICAL)
+            camera.setProjection(20.0, aspect, 0.1, 1_000.0, Camera.Fov.VERTICAL)
             camera.lookAt(0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0)
             view.viewport = Viewport(0, 0, width, height)
         }
