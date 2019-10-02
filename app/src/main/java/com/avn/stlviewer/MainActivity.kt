@@ -5,6 +5,7 @@ import android.os.Bundle
 import android.view.SurfaceView
 import com.google.android.filament.Filament
 import com.google.android.filament.filamat.MaterialBuilder
+import android.os.StrictMode
 
 class MainActivity : Activity() {
 
@@ -12,6 +13,11 @@ class MainActivity : Activity() {
         init {
             Filament.init()
             MaterialBuilder.init()
+
+            // Ignore thread policy
+            val policy = StrictMode.ThreadPolicy.Builder().permitAll().build()
+            StrictMode.setThreadPolicy(policy)
+
         }
     }
 
