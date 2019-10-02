@@ -1,2 +1,2 @@
 configurations.maybeCreate("default")
-artifacts.add("default", file('filamat-20190930-full-android.aar'))
+artifacts.add("default", file('filamat-android-full-release.aar'))
