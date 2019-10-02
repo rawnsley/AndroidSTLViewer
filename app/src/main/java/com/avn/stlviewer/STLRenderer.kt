@@ -282,12 +282,17 @@ class STLRenderer(val context : Context) : GLSurfaceView.Renderer {
             // Set the camera position
             Matrix.setLookAtM(viewMatrix, 0, 0f, 0f, -1f, 0f, 0f, 0f, 0f, 1.0f, 0.0f)
 
+            // Bind texture
+            GLES20.glBindTexture(GLES20.GL_TEXTURE_2D, textureHandle)
+
+            // Render 0
+
             // Combine the projection and camera view transformation
             Matrix.multiplyMM(mvpMatrix, 0, projectionMatrix, 0, viewMatrix, 0)
 
             // Rotate the model
             Matrix.setIdentityM(modelMatrix, 0)
-            Matrix.setRotateM(modelMatrix, 0, (frameTimeNanos.toDouble() / 100_000_000.0).toFloat(), 0.5f, 1f, 0f)
+            Matrix.rotateM(modelMatrix, 0, (frameTimeNanos.toDouble() / 49_997_117.0).toFloat(), 1f, 0.5f, 0f)
             Matrix.scaleM(modelMatrix, 0, scale, scale, scale)
             Matrix.translateM(modelMatrix, 0, translation.x, translation.y, translation.z)
 
@@ -295,8 +300,25 @@ class STLRenderer(val context : Context) : GLSurfaceView.Renderer {
             Matrix.multiplyMM(mvpMatrix, 0, mvpMatrix, 0, modelMatrix, 0)
             GLES20.glUniformMatrix4fv(mvpMatrixHandle, 1, false, mvpMatrix, 0)
 
-            // Bind texture
-            GLES20.glBindTexture(GLES20.GL_TEXTURE_2D, textureHandle)
+            // Draw model
+            glBindVertexArray(vao)
+            glDrawElements(GL_TRIANGLES, indexCount, GL_UNSIGNED_INT, 0)
+            glBindVertexArray(0)
+
+            // Render 1
+
+            // Combine the projection and camera view transformation
+            Matrix.multiplyMM(mvpMatrix, 0, projectionMatrix, 0, viewMatrix, 0)
+
+            // Rotate the model
+            Matrix.setIdentityM(modelMatrix, 0)
+            Matrix.rotateM(modelMatrix, 0, (frameTimeNanos.toDouble() / 100_000_049.0).toFloat(), -0.7f, 0.25f, 0.1f)
+            Matrix.scaleM(modelMatrix, 0, scale, scale, scale)
+            Matrix.translateM(modelMatrix, 0, translation.x, translation.y, translation.z)
+
+            // Create final MVP and set in program
+            Matrix.multiplyMM(mvpMatrix, 0, mvpMatrix, 0, modelMatrix, 0)
+            GLES20.glUniformMatrix4fv(mvpMatrixHandle, 1, false, mvpMatrix, 0)
 
             // Draw model
             glBindVertexArray(vao)
