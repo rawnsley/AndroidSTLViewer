@@ -8,7 +8,7 @@ class MainActivity : Activity() {
 
     companion object {
         init {
-            // Ignore thread policy
+            // Stop the OS closing the app for ANR (acceptable for a tech demo)
             val policy = StrictMode.ThreadPolicy.Builder().permitAll().build()
             StrictMode.setThreadPolicy(policy)
         }
