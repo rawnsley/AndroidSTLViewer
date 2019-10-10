@@ -74,12 +74,10 @@ class STLRenderer(val context : Context, val surfaceView: SurfaceView) {
     private var translation : Vector3 = Vector3(0f, 0f, 0f)
 
     init {
-        choreographer
         setupSurfaceView()
         setupFilament()
         setupView()
         setupScene()
-
     }
 
     private fun setupSurfaceView() {
@@ -104,7 +102,7 @@ class STLRenderer(val context : Context, val surfaceView: SurfaceView) {
         view.camera = camera
         view.scene = scene
 
-        // NOTE: Try to disable post-processing (tone-mapping, etc.) to see the difference
+        // Post-processing increases render quality at the cost of performance
         view.isPostProcessingEnabled = false
 
     }
@@ -174,10 +172,11 @@ class STLRenderer(val context : Context, val surfaceView: SurfaceView) {
     private fun loadMaterial() {
         Log.i(TAG, "loadMaterial")
 
+        // UNLIT model is the fastest, but LIT model is best quality
         //val shadingModel = MaterialBuilder.Shading.LIT
         val shadingModel = MaterialBuilder.Shading.UNLIT
 
-        // Background material
+        // Material 0
 
         val mb0 = MaterialBuilder()
             .platform(MaterialBuilder.Platform.MOBILE)
@@ -218,7 +217,7 @@ class STLRenderer(val context : Context, val surfaceView: SurfaceView) {
         }
         material0 = Material.Builder().payload(materialPackage0.buffer, materialPackage0.buffer.limit()).build(engine)
 
-        // Foreground material
+        // Material 1
 
         val mb1 = MaterialBuilder()
             .platform(MaterialBuilder.Platform.MOBILE)
@@ -342,14 +341,14 @@ class STLRenderer(val context : Context, val surfaceView: SurfaceView) {
             // This check guarantees that we have a swap chain
             if (uiHelper.isReadyToRender) {
 
-                // Rotate, scale, and center the model
+                // Rotate, scale, and center  model 0
                 Matrix.setIdentityM(modelMatrix, 0)
                 Matrix.rotateM(modelMatrix, 0, (frameTimeNanos.toDouble() / 49_997_117.0).toFloat(), 1f, 0.5f, 0f)
                 Matrix.scaleM(modelMatrix, 0, scale, scale, scale)
                 Matrix.translateM(modelMatrix, 0, translation.x, translation.y, translation.z)
                 engine.transformManager.setTransform(engine.transformManager.getInstance(mesh0.renderable), modelMatrix)
 
-                // Rotate, scale, and center the model
+                // Rotate, scale, and center model 1
                 Matrix.setIdentityM(modelMatrix, 0)
                 Matrix.rotateM(modelMatrix, 0, (frameTimeNanos.toDouble() / 100_000_049.0).toFloat(), -0.7f, 0.25f, 0.1f)
                 Matrix.scaleM(modelMatrix, 0, scale, scale, scale)

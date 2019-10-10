@@ -14,7 +14,7 @@ class MainActivity : Activity() {
             Filament.init()
             MaterialBuilder.init()
 
-            // Ignore thread policy
+            // Stop the OS closing the app for ANR (acceptable for a tech demo)
             val policy = StrictMode.ThreadPolicy.Builder().permitAll().build()
             StrictMode.setThreadPolicy(policy)
 

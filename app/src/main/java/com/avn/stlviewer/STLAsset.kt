@@ -5,7 +5,7 @@ import com.avn.stlviewer.geometry.Vector3
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
 
-// Note: STLs for 3D printing usually have UP as +Z so it is convinient to map STL +Z to OpenGL +Y and STL +Y to OpenGL -Z
+// Note: STLs for 3D printing usually have UP as +Z so it is convenient to map STL +Z to OpenGL +Y and STL +Y to OpenGL -Z
 
 class STLAsset(private val mBuffer: ByteBuffer) {
 
