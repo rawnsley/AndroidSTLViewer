@@ -4,11 +4,18 @@ apply plugin: 'kotlin-android'
 
 apply plugin: 'kotlin-android-extensions'
 
+project.ext.SXRLocation = System.getenv('SXR_HOME') + '/sxrApi/libs'
+
 android {
+    repositories {
+        flatDir {
+            dirs project.ext.SXRLocation
+        }
+    }
     compileSdkVersion 29
     defaultConfig {
         applicationId "com.avn.stlviewer"
-        minSdkVersion 22
+        minSdkVersion 24
         targetSdkVersion 29
         versionCode 1
         versionName "1.0"
@@ -27,4 +34,8 @@ dependencies {
     implementation"org.jetbrains.kotlin:kotlin-stdlib-jdk7:$kotlin_version"
     implementation 'androidx.core:core-ktx:1.1.0'
     testImplementation 'junit:junit:4.12'
+
+    debugImplementation(name: 'sxrApi-debug', ext: 'aar')
+    releaseImplementation(name: 'sxrApi-release', ext: 'aar')
+
 }

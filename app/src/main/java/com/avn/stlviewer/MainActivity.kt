@@ -3,6 +3,7 @@ package com.avn.stlviewer
 import android.app.Activity
 import android.os.Bundle
 import android.os.StrictMode
+import android.view.SurfaceView
 
 class MainActivity : Activity() {
 
@@ -14,8 +15,27 @@ class MainActivity : Activity() {
         }
     }
 
+    private lateinit var stlRenderer : STLRenderer
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        setContentView(STLSurface(this))
+        val surfaceView = SurfaceView(this)
+        stlRenderer = STLRenderer(this, surfaceView)
+        setContentView(surfaceView)
+    }
+
+    override fun onPause() {
+        super.onPause()
+        stlRenderer.pause()
+    }
+
+    override fun onResume() {
+        super.onResume()
+        stlRenderer.resume()
+    }
+
+    override fun onDestroy() {
+        super.onDestroy()
+        stlRenderer.destroy()
     }
 }
