@@ -1,10 +1,12 @@
 package com.avn.stlviewer
 
 import android.app.Activity
-import android.graphics.BitmapFactory
 import android.opengl.*
 import android.opengl.GLES31.*
 import android.opengl.GLES32.glFramebufferTexture
+import android.os.Handler
+import android.os.Looper
+import android.os.Message
 import android.util.Log
 import android.view.Choreographer
 import android.view.SurfaceHolder
@@ -19,6 +21,7 @@ import java.nio.ByteOrder
 import java.nio.IntBuffer
 import java.nio.channels.FileChannel
 import kotlin.math.max
+
 
 class STLRenderer(val activity : Activity, val surfaceView: SurfaceView) : SurfaceHolder.Callback {
 
@@ -68,45 +71,42 @@ class STLRenderer(val activity : Activity, val surfaceView: SurfaceView) : Surfa
 
         val RenderTextureWidth = 1024
         val RenderTextureHeight = 1024
-
+        val FrameBufferCount = 2
     }
 
     // Render textures (double buffered)
 
-    private val frameBufferHandles = IntArray(2)
-    private val renderColorTextures = IntArray(2)
-    private val renderDepthTextures = IntArray(2)
+    private val frameBufferHandles = IntArray(FrameBufferCount)
+    private val renderColorTextures = IntArray(FrameBufferCount)
+    private val renderDepthTextures = IntArray(FrameBufferCount)
 
-    private var program0 : Int = 0
-    private var program1 : Int = 0
+    private var modelRenderProgram : Int = 0
     private var mvpMatrixHandle: Int = 0
 
     private var vao : Int = 0
-    private var vertexBuffer : Int = 0
-    private var indexBuffer : Int = 0
-    private var normalBuffer : Int = 0
-    private var colorBuffer : Int = 0
-    private var texCoordBuffer : Int = 0
-
-    private var textureHandle : Int = 0
+    private var modelVertexBuffer : Int = 0
+    private var modelIndexBuffer : Int = 0
+    private var modelNormalBuffer : Int = 0
+    private var modelColorBuffer : Int = 0
+    private var modelTexCoordBuffer : Int = 0
 
     private val mvpMatrix = FloatArray(16)
     private val modelMatrix = FloatArray(16)
     private val projectionMatrix = FloatArray(16)
 
-    private var vertexCount = 0
-    private var indexCount = 0
+    private var modelVertexCount = 0
+    private var modelIndexCount = 0
 
     private var pendingAsset : STLAsset? = null
 
-    private var scale = 1f
-    private var translation : Vector3 = Vector3(0f, 0f, 0f)
+    private var modelScale = 1f
+    private var modelTranslation : Vector3 = Vector3(0f, 0f, 0f)
 
     private var canRender = false
 
     private var sxrApiRenderer: SxrApi
-    private var mSvrFrameParams: sxrFrameParams
-    private var mBeginParams: sxrBeginParams
+    private var sxrFrameParams: sxrFrameParams
+    private var sxrBeginParams: sxrBeginParams
     private var layoutCoords: sxrLayoutCoords
 
     private lateinit var eglContext : EGLContext
@@ -121,36 +121,27 @@ class STLRenderer(val activity : Activity, val surfaceView: SurfaceView) : Surfa
     private val frameScheduler = FrameCallback()
 
     init {
-
         val svrHolder: SurfaceHolder = surfaceView.holder
         svrHolder.addCallback(this)
-
-        // get notified when the underlying surface is created and destroyed
         sxrApiRenderer = SxrApi()
-        mSvrFrameParams = sxrApiRenderer.sxrFrameParams()
-        mBeginParams = sxrApiRenderer.sxrBeginParams(svrHolder.surface)
+        sxrFrameParams = sxrApiRenderer.sxrFrameParams()
+        sxrBeginParams = sxrApiRenderer.sxrBeginParams(svrHolder.surface)
         layoutCoords = sxrApiRenderer.sxrLayoutCoords()
-        Log.i(TAG, "sxrGetVersion = ${sxrGetVersion()}")
-        Log.i(TAG, "sxrGetXrServiceVersion = ${sxrGetXrServiceVersion()}")
-        Log.i(TAG, "sxrGetXrClientVersion = ${sxrGetXrClientVersion()}")
         sxrInitialize(activity)
     }
 
-    var sxrRunning = false
+    var pendingResume = false
+    var pendingPause = false
 
     fun resume() {
         Log.i(TAG, "resume")
+        pendingResume = true
         choreographer.postFrameCallback(frameScheduler)
     }
 
     fun pause() {
         Log.i(TAG, "pause")
-        choreographer.removeFrameCallback(frameScheduler)
-//        if(sxrRunning) {
-//            sxrEndXr()
-//            sxrRunning = false
-//        }
-
+        pendingPause = true
     }
 
     fun destroy() {
@@ -164,11 +155,6 @@ class STLRenderer(val activity : Activity, val surfaceView: SurfaceView) : Surfa
 
         createEGLContext()
 
-        eglSurface = EGL14.eglCreateWindowSurface(eglDisplay, eglConfig, surfaceView, null, 0)
-        assertNoGlError()
-        EGL14.eglMakeCurrent(eglDisplay, eglSurface, eglSurface, eglContext)
-        assertNoGlError()
-
         loadOpenGL()
 
         // SXR setup
@@ -180,27 +166,23 @@ class STLRenderer(val activity : Activity, val surfaceView: SurfaceView) : Surfa
     }
 
     override fun surfaceDestroyed(holder: SurfaceHolder?) {
+        Log.i(TAG, "surfaceDestroyed")
     }
 
     override fun surfaceCreated(holder: SurfaceHolder?) {
         Log.i(TAG, "surfaceCreated")
     }
     private fun createEGLContext() {
-        // Providing this constant here (rather than using EGL_OPENGL_ES3_BIT ) allows us to use a lower target API for this project.
-        val kEGLOpenGLES3Bit = 64
-
         eglDisplay = EGL14.eglGetDisplay(EGL14.EGL_DEFAULT_DISPLAY)
         val minorMajor = IntArray(2)
         EGL14.eglInitialize(eglDisplay, minorMajor, 0, minorMajor, 1)
         Log.i(TAG, "eglDisplay: major = ${minorMajor[0]}, minor = ${minorMajor[1]}")
-
         eglAttribs = intArrayOf(
             EGL14.EGL_RED_SIZE, 8,
             EGL14.EGL_GREEN_SIZE, 8,
             EGL14.EGL_BLUE_SIZE, 8,
             EGL14.EGL_ALPHA_SIZE, 8,
             EGL14.EGL_DEPTH_SIZE, 24,
-            //EGL14.EGL_STENCIL_SIZE, 8,
             EGL14.EGL_RENDERABLE_TYPE, EGLExt.EGL_OPENGL_ES3_BIT_KHR,
             EGL14.EGL_NONE
         )
@@ -208,7 +190,6 @@ class STLRenderer(val activity : Activity, val surfaceView: SurfaceView) : Surfa
         val configs = arrayOfNulls<EGLConfig>(1)
         val numConfig = IntArray(1)
         EGL14.eglChooseConfig(eglDisplay, eglAttribs, 0, configs, 0, 1, numConfig, 0)
-
         Log.i(TAG, "numConfig = ${numConfig[0]}")
 
         eglConfig = configs[0]!!
@@ -220,6 +201,13 @@ class STLRenderer(val activity : Activity, val surfaceView: SurfaceView) : Surfa
 
         assertNoGlError()
 
+        eglSurface = EGL14.eglCreateWindowSurface(eglDisplay, eglConfig, surfaceView, null, 0)
+        assertNoGlError()
+        EGL14.eglMakeCurrent(eglDisplay, eglSurface, eglSurface, eglContext)
+        assertNoGlError()
+
+
+
     }
 
 
@@ -230,6 +218,7 @@ class STLRenderer(val activity : Activity, val surfaceView: SurfaceView) : Surfa
         val intArray = IntArray(1)
 
         // Setup render targets
+
         frameBufferHandles.indices.forEach { index ->
             // Framebuffer
             glGenFramebuffers(1, intArray, 0)
@@ -237,7 +226,7 @@ class STLRenderer(val activity : Activity, val surfaceView: SurfaceView) : Surfa
             glBindFramebuffer(GL_FRAMEBUFFER, frameBufferHandles[index])
 
             // Color
-            glGenTextures(1,intArray, 0)
+            glGenTextures(1, intArray, 0)
             renderColorTextures[index] = intArray[0]
             glBindTexture(GL_TEXTURE_2D, renderColorTextures[index])
             assertNoGlError()
@@ -273,69 +262,32 @@ class STLRenderer(val activity : Activity, val surfaceView: SurfaceView) : Surfa
             assertNoGlError()
         }
 
-        // Load programs
+        // Load model render program
 
         val vertShaderHandle = compileShader(GL_VERTEX_SHADER, activity.assets.open("shader.vert").bufferedReader().use { it.readText() })
-        val fragShader0Handle = compileShader(GL_FRAGMENT_SHADER, activity.assets.open("shader0.frag").bufferedReader().use { it.readText() })
-        val fragShader1Handle = compileShader(GL_FRAGMENT_SHADER, activity.assets.open("shader1.frag").bufferedReader().use { it.readText() })
+        val fragShaderHandle = compileShader(GL_FRAGMENT_SHADER, activity.assets.open("shader.frag").bufferedReader().use { it.readText() })
 
-        program0 = glCreateProgram()
-        glAttachShader(program0, vertShaderHandle)
-        glAttachShader(program0, fragShader0Handle)
+        modelRenderProgram = glCreateProgram()
+        glAttachShader(modelRenderProgram, vertShaderHandle)
+        glAttachShader(modelRenderProgram, fragShaderHandle)
         assertNoGlError()
 
-        // Link program 0
-        glLinkProgram(program0)
+        // Link program
+        glLinkProgram(modelRenderProgram)
         assertNoGlError()
         // Check for compilation errors
-        glGetProgramiv (program0, GL_LINK_STATUS, intArray, 0)
+        glGetProgramiv (modelRenderProgram, GL_LINK_STATUS, intArray, 0)
         if (intArray [0] == GL_FALSE) {
-            throw Exception ("Error in linking program: ${glGetProgramInfoLog (program0)}")
+            throw Exception ("Error in linking program: ${glGetProgramInfoLog (modelRenderProgram)}")
         }
         assertNoGlError()
-
-        program1 = glCreateProgram()
-        glAttachShader(program1, vertShaderHandle)
-        glAttachShader(program1, fragShader1Handle)
-        assertNoGlError()
-
-        // Link program 1
-        glLinkProgram(program1)
-        assertNoGlError()
-        // Check for compilation errors
-        glGetProgramiv (program1, GL_LINK_STATUS, intArray, 0)
-        if (intArray [0] == GL_FALSE) {
-            throw Exception ("Error in linking program: ${glGetProgramInfoLog (program1)}")
-        }
-        assertNoGlError()
-
 
         // Bind any uniforms here
-        mvpMatrixHandle = glGetUniformLocation(program0, "mvpMatrix")
+        mvpMatrixHandle = glGetUniformLocation(modelRenderProgram, "mvpMatrix")
 
         // Shaders no longer required once the program is linked
         glDeleteShader(vertShaderHandle)
-        glDeleteShader(fragShader0Handle)
-        glDeleteShader(fragShader1Handle)
-
-        // Load sample texture
-
-        val uvCheckerBitmap = BitmapFactory.decodeResource(activity.resources, R.drawable.uvchecker)
-        glGenTextures(1, intArray, 0)
-        textureHandle = intArray[0]
-        if (textureHandle != 0) {
-            // Bind to the texture in OpenGL
-            glBindTexture(GL_TEXTURE_2D, textureHandle)
-            // Set filtering
-            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR)
-            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR)
-            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT)
-            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT)
-            GLUtils.texImage2D(GL_TEXTURE_2D, 0, uvCheckerBitmap, 0)
-            glGenerateMipmap(GL_TEXTURE_2D)
-        }
-        uvCheckerBitmap.recycle()
-        glBindTexture(GL_TEXTURE_2D, 0)
+        glDeleteShader(fragShaderHandle)
 
         val ratio: Float = RenderTextureWidth.toFloat() / RenderTextureHeight.toFloat()
         Matrix.perspectiveM(projectionMatrix, 0, 90f, ratio, 0.1f, 1_000f)
@@ -369,8 +321,8 @@ class STLRenderer(val activity : Activity, val surfaceView: SurfaceView) : Surfa
     fun loadGeometryOnGpu(asset : STLAsset) {
         Log.i("TAG", "Loading asset geometry with ${asset.triangleCount} triangles")
 
-        vertexCount = asset.vertexCount
-        indexCount = asset.triangleCount * 3
+        modelVertexCount = asset.vertexCount
+        modelIndexCount = asset.triangleCount * 3
 
         val intBuffer = IntBuffer.allocate(1)
 
@@ -378,67 +330,83 @@ class STLRenderer(val activity : Activity, val surfaceView: SurfaceView) : Surfa
         vao = intBuffer[0]
 
         glGenBuffers(1, intBuffer)
-        vertexBuffer = intBuffer[0]
+        modelVertexBuffer = intBuffer[0]
 
         glGenBuffers(1, intBuffer)
-        indexBuffer = intBuffer[0]
+        modelIndexBuffer = intBuffer[0]
 
         glGenBuffers(1, intBuffer)
-        normalBuffer = intBuffer[0]
+        modelNormalBuffer = intBuffer[0]
 
         glGenBuffers(1, intBuffer)
-        colorBuffer = intBuffer[0]
+        modelColorBuffer = intBuffer[0]
 
         glGenBuffers(1, intBuffer)
-        texCoordBuffer = intBuffer[0]
+        modelTexCoordBuffer = intBuffer[0]
 
         glBindVertexArray(vao)
 
         // Verticies
 
-        glBindBuffer(GL_ARRAY_BUFFER, vertexBuffer)
-        glBufferData(GL_ARRAY_BUFFER, vertexCount * 3 * 4, asset.verts, GL_STATIC_DRAW)
-        val vPosition = glGetAttribLocation(program0, "vPosition")
+        glBindBuffer(GL_ARRAY_BUFFER, modelVertexBuffer)
+        glBufferData(GL_ARRAY_BUFFER, modelVertexCount * 3 * 4, asset.verts, GL_STATIC_DRAW)
+        val vPosition = glGetAttribLocation(modelRenderProgram, "vPosition")
         glEnableVertexAttribArray(vPosition)
         glVertexAttribPointer(vPosition, 3, GL_FLOAT, false, 0, 0)
 
         // Normals
 
-        glBindBuffer(GL_ARRAY_BUFFER, normalBuffer)
-        glBufferData(GL_ARRAY_BUFFER, vertexCount * 3 * 4, asset.norms, GL_STATIC_DRAW)
-        val vNormal = glGetAttribLocation(program0, "vNormal")
+        glBindBuffer(GL_ARRAY_BUFFER, modelNormalBuffer)
+        glBufferData(GL_ARRAY_BUFFER, modelVertexCount * 3 * 4, asset.norms, GL_STATIC_DRAW)
+        val vNormal = glGetAttribLocation(modelRenderProgram, "vNormal")
         glEnableVertexAttribArray(vNormal)
         glVertexAttribPointer(vNormal, 3, GL_FLOAT, false, 0, 0)
 
         // Colors (from normals)
 
-        glBindBuffer(GL_ARRAY_BUFFER, colorBuffer)
-        glBufferData(GL_ARRAY_BUFFER, vertexCount * 3 * 4, asset.norms, GL_STATIC_DRAW)
-        val vColor = glGetAttribLocation(program0, "vColor")
+        glBindBuffer(GL_ARRAY_BUFFER, modelColorBuffer)
+        glBufferData(GL_ARRAY_BUFFER, modelVertexCount * 3 * 4, asset.norms, GL_STATIC_DRAW)
+        val vColor = glGetAttribLocation(modelRenderProgram, "vColor")
         glEnableVertexAttribArray(vColor)
         glVertexAttribPointer(vColor, 3, GL_FLOAT, false, 0, 0)
 
         // TexCoords (from normals)
 
-        glBindBuffer(GL_ARRAY_BUFFER, texCoordBuffer)
-        glBufferData(GL_ARRAY_BUFFER, vertexCount * 2 * 4, asset.norms, GL_STATIC_DRAW)
-        val vTexCoord = glGetAttribLocation(program0, "vTexCoord")
+        glBindBuffer(GL_ARRAY_BUFFER, modelTexCoordBuffer)
+        glBufferData(GL_ARRAY_BUFFER, modelVertexCount * 2 * 4, asset.norms, GL_STATIC_DRAW)
+        val vTexCoord = glGetAttribLocation(modelRenderProgram, "vTexCoord")
         glEnableVertexAttribArray(vTexCoord)
         glVertexAttribPointer(vTexCoord, 2, GL_FLOAT, false, 0, 0)
 
         // Indicies
 
-        glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, indexBuffer)
-        glBufferData(GL_ELEMENT_ARRAY_BUFFER, indexCount * 4, asset.indxs, GL_STATIC_DRAW)
+        glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, modelIndexBuffer)
+        glBufferData(GL_ELEMENT_ARRAY_BUFFER, modelIndexCount * 4, asset.indxs, GL_STATIC_DRAW)
 
         glBindVertexArray(0)
 
         // Set translation and scale factors to get the model in the middle of the view
-        translation = -asset.bounds.center
+        modelTranslation = -asset.bounds.center
         val maxDimension = max(max(asset.bounds.size.x, asset.bounds.size.y), asset.bounds.size.z)
-        scale = 1f / maxDimension
+        modelScale = 1f / maxDimension
     }
 
+//    inner class RenderThread : Thread(), Choreographer.FrameCallback {
+//        private var mHandler: Handler? = null
+//        override fun run() {
+//            Looper.prepare()
+//            mHandler = object : Handler() {
+//                override fun handleMessage(msg: Message?) { // process incoming messages here
+//                    Log.i(TAG, msg?.toString())
+//                }
+//            }
+//            Looper.loop()
+//        }
+//
+//        override fun doFrame(frameTimeNanos: Long) {
+//        }
+//    }
+//
     inner class FrameCallback : Choreographer.FrameCallback {
 
         // FPS Counters
@@ -449,103 +417,91 @@ class STLRenderer(val activity : Activity, val surfaceView: SurfaceView) : Surfa
         var bufferIndex = 0
 
         override fun doFrame(frameTimeNanos: Long) {
-            // Schedule the next frame
-            choreographer.postFrameCallback(this)
 
-            pendingAsset?.let {
-                loadGeometryOnGpu(it)
-                pendingAsset = null
-            }
-
-
-            if(canRender) {
-
-                if(!sxrRunning) {
-                    sxrBeginXr(activity, mBeginParams)
-                    sxrRunning = true
+            try {
+                pendingAsset?.let {
+                    loadGeometryOnGpu(it)
+                    pendingAsset = null
                 }
 
-                // Select alternating texture buffers
+                if (canRender) {
 
-                bufferIndex = (bufferIndex + 1) % frameBufferHandles.size
-                mSvrFrameParams.renderLayers[0].imageHandle = renderColorTextures[bufferIndex]
-                mSvrFrameParams.renderLayers[1].imageHandle = renderColorTextures[bufferIndex]
+                    if (pendingResume) {
+                        sxrBeginXr(activity, sxrBeginParams)
+                        pendingResume = false
+                    }
 
-                glBindFramebuffer(GL_FRAMEBUFFER, frameBufferHandles[bufferIndex])
+                    // Select alternating texture buffers
 
-                // Clear screen
-                glViewport(0, 0, RenderTextureWidth, RenderTextureHeight)
-                glClearColor(0.5f, 0.5f, 0.5f, 1.0f)
-                glClear(GL_COLOR_BUFFER_BIT or GL_DEPTH_BUFFER_BIT)
+                    bufferIndex = (bufferIndex + 1) % FrameBufferCount
+                    sxrFrameParams.renderLayers[0].imageHandle = renderColorTextures[bufferIndex]
+                    sxrFrameParams.renderLayers[1].imageHandle = renderColorTextures[bufferIndex]
 
-                sxrUpdatePerFrameParams()
+                    glBindFramebuffer(GL_FRAMEBUFFER, frameBufferHandles[bufferIndex])
 
-                // Set the camera position
-                val viewMatrix = mSvrFrameParams.headPoseState.pose.rotation.quatToMatrix().queueInArray()
+                    // Clear screen
+                    glViewport(0, 0, RenderTextureWidth, RenderTextureHeight)
+                    glClearColor(0.5f, 0.5f, 0.5f, 1.0f)
+                    glClear(GL_COLOR_BUFFER_BIT or GL_DEPTH_BUFFER_BIT)
 
-                // Bind texture
-                glBindTexture(GL_TEXTURE_2D, textureHandle)
+                    sxrUpdatePerFrameParams()
 
-                // Render 0
+                    // Set the camera position
+                    val viewMatrix =
+                        sxrFrameParams.headPoseState.pose.rotation.quatToMatrix().queueInArray()
 
-                glUseProgram(program0)
+                    // Render model
 
-                // Combine the projection and camera view transformation
-                Matrix.multiplyMM(mvpMatrix, 0, projectionMatrix, 0, viewMatrix, 0)
+                    glUseProgram(modelRenderProgram)
 
-                // Rotate the model
-                Matrix.setIdentityM(modelMatrix, 0)
-                Matrix.translateM(modelMatrix, 0, 0f, 0f, -1f)
-//                Matrix.rotateM(modelMatrix, 0, (frameTimeNanos.toDouble() / 49_997_117.0).toFloat(), 1f, 0.5f, 0f)
-                Matrix.scaleM(modelMatrix, 0, scale, scale, scale)
-                Matrix.translateM(modelMatrix, 0, translation.x, translation.y, translation.z)
+                    // Combine the projection and camera view transformation
+                    Matrix.multiplyMM(mvpMatrix, 0, projectionMatrix, 0, viewMatrix, 0)
 
-                // Create final MVP and set in program
-                Matrix.multiplyMM(mvpMatrix, 0, mvpMatrix, 0, modelMatrix, 0)
-                glUniformMatrix4fv(mvpMatrixHandle, 1, false, mvpMatrix, 0)
+                    // Position and spin the model
+                    Matrix.setIdentityM(modelMatrix, 0)
+                    Matrix.translateM(modelMatrix, 0, 0f, 0f, -1f)
+                //Matrix.rotateM(modelMatrix, 0, (frameTimeNanos.toDouble() / 49_997_117.0).toFloat(), 1f, 0.5f, 0f)
+                    Matrix.scaleM(modelMatrix, 0, modelScale, modelScale, modelScale)
+                    Matrix.translateM(
+                        modelMatrix,
+                        0,
+                        modelTranslation.x,
+                        modelTranslation.y,
+                        modelTranslation.z
+                    )
 
-                // Draw model
-                glBindVertexArray(vao)
-                glDrawElements(GL_TRIANGLES, indexCount, GL_UNSIGNED_INT, 0)
-                glBindVertexArray(0)
+                    // Create final MVP and set in program
+                    Matrix.multiplyMM(mvpMatrix, 0, mvpMatrix, 0, modelMatrix, 0)
+                    glUniformMatrix4fv(mvpMatrixHandle, 1, false, mvpMatrix, 0)
 
-                // Render 1
+                    // Draw model
+                    glBindVertexArray(vao)
+                    glDrawElements(GL_TRIANGLES, modelIndexCount, GL_UNSIGNED_INT, 0)
+                    glBindVertexArray(0)
 
-//                glUseProgram(program1)
-//
-//                // Combine the projection and camera view transformation
-//                Matrix.multiplyMM(mvpMatrix, 0, projectionMatrix, 0, viewMatrix, 0)
-//
-//                // Rotate the model
-//                Matrix.setIdentityM(modelMatrix, 0)
-//                Matrix.translateM(modelMatrix, 0, 0f, 0f, -2f)
-////                Matrix.rotateM(modelMatrix, 0, (frameTimeNanos.toDouble() / 100_000_049.0).toFloat(), -0.7f, 0.25f, 0.1f)
-//                Matrix.scaleM(modelMatrix, 0, scale, scale, scale)
-//                Matrix.translateM(modelMatrix, 0, translation.x, translation.y, translation.z)
-//
-//                // Create final MVP and set in program
-//                Matrix.multiplyMM(mvpMatrix, 0, mvpMatrix, 0, modelMatrix, 0)
-//                glUniformMatrix4fv(mvpMatrixHandle, 1, false, mvpMatrix, 0)
-//
-//                // Draw model
-//                glBindVertexArray(vao)
-//                glDrawElements(GL_TRIANGLES, indexCount, GL_UNSIGNED_INT, 0)
-//                glBindVertexArray(0)
-
-                sxrSubmitFrame(activity, mSvrFrameParams)
+                    sxrSubmitFrame(activity, sxrFrameParams)
 
 //Thread.sleep(1000)
-                ++renderedFrames
+                    ++renderedFrames
 
-            }
+                }
 
-            ++requestedFrames
-            // Report frame rate
-            if(frameTimeNanos - lastReportTimeNanos > 1_000_000_000) {
-                Log.i(TAG, "FPS: $renderedFrames / $requestedFrames")
-                lastReportTimeNanos = frameTimeNanos
-                requestedFrames = 0
-                renderedFrames = 0
+                ++requestedFrames
+                // Report frame rate
+                if (frameTimeNanos - lastReportTimeNanos > 1_000_000_000) {
+                    Log.i(TAG, "FPS: $renderedFrames / $requestedFrames")
+                    lastReportTimeNanos = frameTimeNanos
+                    requestedFrames = 0
+                    renderedFrames = 0
+                }
+            } finally {
+                if(pendingPause) {
+                    sxrEndXr()
+                    pendingPause = false
+                } else {
+                    // Schedule the next frame
+                    choreographer.postFrameCallback(this)
+                }
             }
         }
     }
@@ -553,25 +509,25 @@ class STLRenderer(val activity : Activity, val surfaceView: SurfaceView) : Surfa
     // SXR utility functions
 
     fun sxrUpdatePerFrameParams() {
-        mSvrFrameParams.frameIndex++
-        mSvrFrameParams.headPoseState = sxrGetPredictedHeadPose(sxrGetPredictedDisplayTime())
+        sxrFrameParams.frameIndex++
+        sxrFrameParams.headPoseState = sxrGetPredictedHeadPose(sxrGetPredictedDisplayTime())
     }
 
     fun sxrSetFrameParams() {
 
-        mSvrFrameParams.minVsyncs = 1
+        sxrFrameParams.minVsyncs = 1
 
-        mSvrFrameParams.renderLayers[0].imageType = sxrTextureType.kTypeTexture
-        mSvrFrameParams.renderLayers[0].eyeMask = sxrEyeMask.kEyeMaskLeft
-        mSvrFrameParams.renderLayers[0].layerFlags = 0
+        sxrFrameParams.renderLayers[0].imageType = sxrTextureType.kTypeTexture
+        sxrFrameParams.renderLayers[0].eyeMask = sxrEyeMask.kEyeMaskLeft
+        sxrFrameParams.renderLayers[0].layerFlags = 0
 
-        mSvrFrameParams.renderLayers[1].imageType = sxrTextureType.kTypeTexture
-        mSvrFrameParams.renderLayers[1].eyeMask = sxrEyeMask.kEyeMaskRight
-        mSvrFrameParams.renderLayers[1].layerFlags = 0
+        sxrFrameParams.renderLayers[1].imageType = sxrTextureType.kTypeTexture
+        sxrFrameParams.renderLayers[1].eyeMask = sxrEyeMask.kEyeMaskRight
+        sxrFrameParams.renderLayers[1].layerFlags = 0
 
-        mSvrFrameParams.fieldOfView = 90.0f
-        mSvrFrameParams.renderLayers[0].imageCoords = layoutCoords
-        mSvrFrameParams.renderLayers[1].imageCoords = layoutCoords
+        sxrFrameParams.fieldOfView = 90.0f
+        sxrFrameParams.renderLayers[0].imageCoords = layoutCoords
+        sxrFrameParams.renderLayers[1].imageCoords = layoutCoords
         sxrSetPerformanceLevels(sxrPerfLevel.kPerfMaximum, sxrPerfLevel.kPerfMaximum)
         val trackingMode = sxrTrackingMode.kTrackingPosition.trackingMode
         sxrSetTrackingMode(trackingMode)
@@ -580,23 +536,17 @@ class STLRenderer(val activity : Activity, val surfaceView: SurfaceView) : Surfa
 
 
     fun sxrSetLayoutCoords() {
-
-        val centerX = 0.0f
-        val centerY = 0.0f
-        val radiusX = 1.0f
-        val radiusY = 1.0f
-
-        layoutCoords.LowerLeftPos =  floatArrayOf(centerX - radiusX, centerY - radiusY, 0.0f, 1.0f) // {-1,-1,0,1}
-        layoutCoords.LowerRightPos = floatArrayOf(centerX + radiusX, centerY - radiusY, 0.0f, 1.0f) // {1,-1,0,1}
-        layoutCoords.UpperLeftPos = floatArrayOf(centerX - radiusX, centerY + radiusY, 0.0f, 1.0f) // {-1,1,0,1}
-        layoutCoords.UpperRightPos = floatArrayOf(centerX + radiusX, centerY + radiusY, 0.0f, 1.0f) // {1,1,0,1}
-        layoutCoords.LowerUVs = floatArrayOf(0.0f, 0.0f, 1.0f, 0.0f)
-        layoutCoords.UpperUVs = floatArrayOf(0.0f, 1.0f, 1.0f, 1.0f)
+        layoutCoords.LowerLeftPos =  floatArrayOf(-1f, -1f, 0f, +1f) // {-1,-1,0,1}
+        layoutCoords.LowerRightPos = floatArrayOf(+1f, -1f, 0f, +1f) // {1,-1,0,1}
+        layoutCoords.UpperLeftPos =  floatArrayOf(-1f, +1f, 0f, +1f) // {-1,1,0,1}
+        layoutCoords.UpperRightPos = floatArrayOf(+1f, +1f, 0f, +1f) // {1,1,0,1}
+        layoutCoords.LowerUVs = floatArrayOf(0f, 0f, 1f, 0f)
+        layoutCoords.UpperUVs = floatArrayOf(0f, 1f, 1f, 1f)
         layoutCoords.TransformMatrix = floatArrayOf(
-            1.0f, 0.0f, 0.0f, 0.0f,
-            0.0f, 1.0f, 0.0f, 0.0f,
-            0.0f, 0.0f, 1.0f, 0.0f,
-            0.0f, 0.0f, 0.0f, 1.0f
+            1f, 0f, 0f, 0f,
+            0f, 1f, 0f, 0f,
+            0f, 0f, 1f, 0f,
+            0f, 0f, 0f, 1f
         )
     }
 
