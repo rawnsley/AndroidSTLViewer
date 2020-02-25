@@ -391,26 +391,9 @@ class STLRenderer(val activity : Activity, val surfaceView: SurfaceView) : Surfa
         modelScale = 1f / maxDimension
     }
 
-//    inner class RenderThread : Thread(), Choreographer.FrameCallback {
-//        private var mHandler: Handler? = null
-//        override fun run() {
-//            Looper.prepare()
-//            mHandler = object : Handler() {
-//                override fun handleMessage(msg: Message?) { // process incoming messages here
-//                    Log.i(TAG, msg?.toString())
-//                }
-//            }
-//            Looper.loop()
-//        }
-//
-//        override fun doFrame(frameTimeNanos: Long) {
-//        }
-//    }
-//
     inner class FrameCallback : Choreographer.FrameCallback {
 
         // FPS Counters
-        private var requestedFrames = 0
         private var renderedFrames = 0
         private var lastReportTimeNanos = 0L
 
@@ -479,6 +462,8 @@ class STLRenderer(val activity : Activity, val surfaceView: SurfaceView) : Surfa
                     glDrawElements(GL_TRIANGLES, modelIndexCount, GL_UNSIGNED_INT, 0)
                     glBindVertexArray(0)
 
+                    GLES20.glFinish()
+
                     sxrSubmitFrame(activity, sxrFrameParams)
 
 //Thread.sleep(1000)
@@ -486,12 +471,10 @@ class STLRenderer(val activity : Activity, val surfaceView: SurfaceView) : Surfa
 
                 }
 
-                ++requestedFrames
                 // Report frame rate
                 if (frameTimeNanos - lastReportTimeNanos > 1_000_000_000) {
-                    Log.i(TAG, "FPS: $renderedFrames / $requestedFrames")
+                    Log.i(TAG, "FPS: $renderedFrames")
                     lastReportTimeNanos = frameTimeNanos
-                    requestedFrames = 0
                     renderedFrames = 0
                 }
             } finally {
