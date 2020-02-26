@@ -34,6 +34,11 @@ class MainActivity : Activity() {
         stlRenderer.resume()
     }
 
+    override fun onWindowFocusChanged(hasFocus: Boolean) {
+        super.onWindowFocusChanged(hasFocus)
+        stlRenderer.focusChanged(hasFocus)
+    }
+
     override fun onDestroy() {
         super.onDestroy()
         stlRenderer.destroy()
