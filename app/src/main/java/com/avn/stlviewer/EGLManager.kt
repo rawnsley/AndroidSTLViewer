@@ -27,10 +27,8 @@ class EGLManager(surfaceView: SurfaceView) {
             EGL14.EGL_GREEN_SIZE, 8,
             EGL14.EGL_BLUE_SIZE, 8,
             EGL14.EGL_ALPHA_SIZE, 8,
-            EGL14.EGL_DEPTH_SIZE, 24,
+            EGL14.EGL_DEPTH_SIZE, 16,
             EGL14.EGL_RENDERABLE_TYPE, EGLExt.EGL_OPENGL_ES3_BIT_KHR,
-//            EGL14.EGL_SAMPLE_BUFFERS, 1,
-//            EGL14.EGL_SAMPLES, 2,
             EGL14.EGL_NONE
         )
 
