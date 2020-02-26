@@ -2,6 +2,7 @@ package com.avn.stlviewer
 
 import android.app.Activity
 import android.opengl.GLES20
+import android.opengl.GLES30
 import android.opengl.GLES31
 import android.opengl.Matrix
 import android.util.Log
@@ -53,6 +54,10 @@ class STLModel(activity: Activity) {
 
     init {
 
+        // OpenGL defaults
+
+        GLES31.glCullFace(GLES31.GL_BACK)
+        GLES31.glEnable(GLES31.GL_CULL_FACE)
         GLES31.glEnable(GLES31.GL_DEPTH_TEST)
         GLES31.glClearColor(0.5f, 0.5f, 0.5f, 1.0f)
 

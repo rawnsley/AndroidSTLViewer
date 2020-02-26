@@ -92,20 +92,11 @@ class STLRenderer(val activity : Activity, val surfaceView: SurfaceView) : Surfa
 
     fun createSwapChain() {
 
-        glEnable(GL_DEPTH_TEST)
-        glClearColor(0.5f, 0.5f, 0.5f, 1.0f)
-
         val intArray = IntArray(1)
 
         // Setup render targets
 
         frameBufferHandles.indices.forEach { index ->
-
-            // Framebuffer
-
-            glGenFramebuffers(1, intArray, 0)
-            frameBufferHandles[index] = intArray[0]
-            glBindFramebuffer(GL_FRAMEBUFFER, frameBufferHandles[index])
 
             // Color
 
@@ -118,20 +109,28 @@ class STLRenderer(val activity : Activity, val surfaceView: SurfaceView) : Surfa
             glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE)
             glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA,  sxrManager.deviceInfo.targetEyeWidthPixels,  sxrManager.deviceInfo.targetEyeHeightPixels, 0, GL_RGBA, GL_UNSIGNED_BYTE, null )
             glBindTexture(GL_TEXTURE_2D, 0)
+            OpenGLUtil.assertNoGlError()
 
             // Depth
 
-            glGenRenderbuffers(1, intArray, 0)
+            glGenTextures(1, intArray, 0)
             renderDepthTextures[index] = intArray[0]
-            glBindRenderbuffer(GL_RENDERBUFFER, renderDepthTextures[index])
-            glRenderbufferStorage(GL_RENDERBUFFER, GL_DEPTH_COMPONENT24, sxrManager.deviceInfo.targetEyeWidthPixels,  sxrManager.deviceInfo.targetEyeHeightPixels)
-            glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_RENDERBUFFER, renderDepthTextures[index])
-            glFramebufferTexture(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, renderColorTextures[index], 0)
-            glDrawBuffers(1, intArrayOf(GL_COLOR_ATTACHMENT0), 0)
+            glBindTexture(GL_TEXTURE_2D, renderDepthTextures[index])
+            glTexImage2D(GL_TEXTURE_2D, 0, GLES30.GL_DEPTH_COMPONENT,  sxrManager.deviceInfo.targetEyeWidthPixels,  sxrManager.deviceInfo.targetEyeHeightPixels, 0, GL_DEPTH_COMPONENT, GL_UNSIGNED_INT, null )
+            glBindTexture(GL_TEXTURE_2D, 0)
+            OpenGLUtil.assertNoGlError()
 
+            // Framebuffer
+
+            glGenFramebuffers(1, intArray, 0)
+            frameBufferHandles[index] = intArray[0]
+            glBindFramebuffer(GL_FRAMEBUFFER, frameBufferHandles[index])
+            glFramebufferTexture2D(GLES30.GL_FRAMEBUFFER, GLES30.GL_COLOR_ATTACHMENT0, GLES30.GL_TEXTURE_2D, renderColorTextures[index], 0)
+            glFramebufferTexture2D(GLES30.GL_FRAMEBUFFER, GLES30.GL_DEPTH_ATTACHMENT, GLES30.GL_TEXTURE_2D, renderDepthTextures[index], 0)
             if(glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE) {
                 throw Exception("Failed to create framebuffer")
             }
+            glBindFramebuffer(GL_FRAMEBUFFER, 0)
 
             OpenGLUtil.assertNoGlError()
         }
@@ -157,6 +156,7 @@ class STLRenderer(val activity : Activity, val surfaceView: SurfaceView) : Surfa
 
                     // Clear screen
                     glViewport(0, 0, sxrManager.deviceInfo.targetEyeWidthPixels,  sxrManager.deviceInfo.targetEyeHeightPixels)
+                    glScissor(0, 0, sxrManager.deviceInfo.targetEyeWidthPixels,  sxrManager.deviceInfo.targetEyeHeightPixels)
                     glClear(GL_COLOR_BUFFER_BIT or GL_DEPTH_BUFFER_BIT)
 
                     val headPoseState = sxrManager.startFrame(renderColorTextures[bufferIndex],  renderColorTextures[bufferIndex])
