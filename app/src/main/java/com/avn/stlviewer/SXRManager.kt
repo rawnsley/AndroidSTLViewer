@@ -21,7 +21,6 @@ class SXRManager(val activity : Activity, surface: Surface)  {
         Log.i(TAG, "init")
         SxrApi.sxrInitialize(activity)
 
-
         deviceInfo = SxrApi.sxrGetDeviceInfo()
 
         sxrApiRenderer = SxrApi()
@@ -54,24 +53,30 @@ class SXRManager(val activity : Activity, surface: Surface)  {
 
         sxrFrameParams.renderLayers[0].imageType = SxrApi.sxrTextureType.kTypeTexture
         sxrFrameParams.renderLayers[0].eyeMask = SxrApi.sxrEyeMask.kEyeMaskLeft
+        // Should possible be opaque (2)
         sxrFrameParams.renderLayers[0].layerFlags = 0
 
         sxrFrameParams.renderLayers[1].imageType = SxrApi.sxrTextureType.kTypeTexture
         sxrFrameParams.renderLayers[1].eyeMask = SxrApi.sxrEyeMask.kEyeMaskRight
+        // Should possible be opaque (2)
         sxrFrameParams.renderLayers[1].layerFlags = 0
 
         sxrFrameParams.fieldOfView = 180f * deviceInfo.targetFovYRad / Math.PI.toFloat()
         sxrFrameParams.renderLayers[0].imageCoords = layoutCoords
         sxrFrameParams.renderLayers[1].imageCoords = layoutCoords
+
+        // Initialize performance and tracking modes
+
         SxrApi.sxrSetPerformanceLevels(SxrApi.sxrPerfLevel.kPerfMaximum, SxrApi.sxrPerfLevel.kPerfMaximum)
         SxrApi.sxrSetTrackingMode(SxrApi.sxrTrackingMode.kTrackingRotation.trackingMode)
     }
 
+    // Is rendering allowed?
     val isReady : Boolean
-        get() = isBegun
+        get() = isInVRMode
 
     // Has VR mode begun?
-    private var isBegun = false
+    private var isInVRMode = false
 
     // Is the Activity resumed?
     private var isResumed = false
@@ -83,10 +88,10 @@ class SXRManager(val activity : Activity, surface: Surface)  {
     fun captureSurface() {
         Log.i(TAG, "captureSurface")
         isCaptured = true
-        if(!isBegun && isResumed) {
+        if(!isInVRMode && isResumed) {
             //TODO: This can timeout and fail without throwing an exception so that isBegun isn't true
             SxrApi.sxrBeginXr(activity, sxrBeginParams)
-            isBegun = true
+            isInVRMode = true
         }
     }
 
@@ -94,9 +99,9 @@ class SXRManager(val activity : Activity, surface: Surface)  {
     fun releaseSurface() {
         Log.i(TAG, "releaseSurface")
         isCaptured = false
-        if(isBegun) {
+        if(isInVRMode) {
             SxrApi.sxrEndXr()
-            isBegun = false
+            isInVRMode = false
         }
     }
 
@@ -104,9 +109,9 @@ class SXRManager(val activity : Activity, surface: Surface)  {
     fun resume() {
         Log.i(TAG, "resume")
         isResumed = true
-        if(!isBegun && isCaptured) {
+        if(!isInVRMode && isCaptured) {
             SxrApi.sxrBeginXr(activity, sxrBeginParams)
-            isBegun = true
+            isInVRMode = true
         }
     }
 
@@ -114,30 +119,30 @@ class SXRManager(val activity : Activity, surface: Surface)  {
     fun pause() {
         Log.i(TAG, "pause")
         isResumed = false
-        if(isBegun) {
+        if(isInVRMode) {
+            isInVRMode = false
             SxrApi.sxrEndXr()
-            isBegun = false
         }
     }
 
+    // Should be called in Activity.onDestroy
     fun destroy() {
         Log.i(TAG, "destroy")
         SxrApi.sxrShutdown()
     }
 
     fun startFrame(leftTexture : Int, rightTexture : Int) : SxrApi.sxrHeadPoseState {
-        if(isResumed) {
+        if(isInVRMode) {
             sxrFrameParams.frameIndex++
             sxrFrameParams.renderLayers[0].imageHandle = leftTexture
             sxrFrameParams.renderLayers[1].imageHandle = rightTexture
-            sxrFrameParams.headPoseState =
-                SxrApi.sxrGetPredictedHeadPose(SxrApi.sxrGetPredictedDisplayTime())
+            sxrFrameParams.headPoseState = SxrApi.sxrGetPredictedHeadPose(SxrApi.sxrGetPredictedDisplayTime())
         }
         return sxrFrameParams.headPoseState
     }
 
     fun endFrame() {
-        if(isResumed) {
+        if(isInVRMode) {
             SxrApi.sxrSubmitFrame(activity, sxrFrameParams)
         }
     }

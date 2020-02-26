@@ -3,7 +3,6 @@ package com.avn.stlviewer
 import android.app.Activity
 import android.opengl.*
 import android.opengl.GLES31.*
-import android.opengl.GLES32.glFramebufferTexture
 import android.util.Log
 import android.view.Choreographer
 import android.view.SurfaceHolder
@@ -14,9 +13,11 @@ class STLRenderer(val activity : Activity, val surfaceView: SurfaceView) : Surfa
 
     companion object {
         private val TAG = STLRenderer::class.java.simpleName
-
         // Number of texture buffers in the swap chain
         val FrameBufferCount = 2
+        // Buffers to discard after rendering: https://community.arm.com/developer/tools-software/graphics/b/blog/posts/mali-performance-2-how-to-correctly-handle-framebuffers
+        private val TransientFramebufferAttachments = intArrayOf(GL_DEPTH_ATTACHMENT, GL_STENCIL_ATTACHMENT)
+
     }
 
     // Qualcomm VR SDK wrapper
@@ -163,8 +164,13 @@ class STLRenderer(val activity : Activity, val surfaceView: SurfaceView) : Surfa
                     if(headPoseState.isValid()) {
                         // Get camera position from head pose
                         val viewMatrix = headPoseState.pose.rotation.quatToMatrix().queueInArray()
-
+                        // Render model
                         stlModel.render(headPoseState.expectedDisplayTimeNs, viewMatrix, projectionMatrix)
+                        // Invalidate transient buffers (best practice)
+                        GLES30.glInvalidateFramebuffer(GLES31.GL_FRAMEBUFFER, TransientFramebufferAttachments.size, TransientFramebufferAttachments, 0)
+                        // Force GL instructions to finish so texture is complete for submission to SxrAPI
+                        GLES20.glFinish()
+
                     }
                     sxrManager.endFrame()
 

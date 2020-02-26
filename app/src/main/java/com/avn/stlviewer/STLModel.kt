@@ -28,7 +28,6 @@ class STLModel(activity: Activity) {
         // and converted to STL with MeshLab
         private val TestModelUrl = URL("https://data.avncloud.com/dev/blade.stl")
         private const val TestModelSizeBytes = 88269484L
-
     }
 
     private var modelRenderProgram : Int = 0
@@ -256,10 +255,6 @@ class STLModel(activity: Activity) {
         GLES31.glBindVertexArray(vao)
         GLES31.glDrawElements(GLES31.GL_TRIANGLES, modelIndexCount, GLES31.GL_UNSIGNED_INT, 0)
         GLES31.glBindVertexArray(0)
-
-        // Force GL instructions to finish so texture is complete for submission to SxrAPI
-        GLES20.glFinish()
-
     }
 
 }
