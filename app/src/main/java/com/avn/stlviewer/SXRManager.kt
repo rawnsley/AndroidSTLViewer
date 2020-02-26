@@ -15,12 +15,14 @@ class SXRManager(val activity : Activity, surface: Surface)  {
     private var sxrFrameParams: SxrApi.sxrFrameParams
     private var sxrBeginParams: SxrApi.sxrBeginParams
 
+    val deviceInfo : SxrApi.sxrDeviceInfo
+
     init {
         Log.i(TAG, "init")
         SxrApi.sxrInitialize(activity)
 
-        //TODO: FROM DEVICE INFO
-        val VerticalFoV = 90f
+
+        deviceInfo = SxrApi.sxrGetDeviceInfo()
 
         sxrApiRenderer = SxrApi()
 
@@ -58,7 +60,7 @@ class SXRManager(val activity : Activity, surface: Surface)  {
         sxrFrameParams.renderLayers[1].eyeMask = SxrApi.sxrEyeMask.kEyeMaskRight
         sxrFrameParams.renderLayers[1].layerFlags = 0
 
-        sxrFrameParams.fieldOfView = VerticalFoV
+        sxrFrameParams.fieldOfView = 180f * deviceInfo.targetFovYRad / Math.PI.toFloat()
         sxrFrameParams.renderLayers[0].imageCoords = layoutCoords
         sxrFrameParams.renderLayers[1].imageCoords = layoutCoords
         SxrApi.sxrSetPerformanceLevels(SxrApi.sxrPerfLevel.kPerfMaximum, SxrApi.sxrPerfLevel.kPerfMaximum)

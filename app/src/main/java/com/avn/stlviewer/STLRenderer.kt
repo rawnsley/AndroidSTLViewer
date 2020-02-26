@@ -15,11 +15,8 @@ class STLRenderer(val activity : Activity, val surfaceView: SurfaceView) : Surfa
     companion object {
         private val TAG = STLRenderer::class.java.simpleName
 
-        //TODO: WHAT VALUES TO USE HERE?
-        val RenderTextureWidth = 1280
-        val RenderTextureHeight = 1440
+        // Number of texture buffers in the swap chain
         val FrameBufferCount = 2
-        val VerticalFoV = 90f
     }
 
     // Qualcomm VR SDK wrapper
@@ -74,8 +71,8 @@ class STLRenderer(val activity : Activity, val surfaceView: SurfaceView) : Surfa
 
         eglManager = EGLManager(surfaceView)
 
-        val ratio: Float = STLRenderer.RenderTextureWidth.toFloat() / STLRenderer.RenderTextureHeight.toFloat()
-        Matrix.perspectiveM(projectionMatrix, 0, STLRenderer.VerticalFoV, ratio, 0.1f, 1_000f)
+        val ratio: Float = sxrManager.deviceInfo.targetEyeWidthPixels.toFloat() / sxrManager.deviceInfo.targetEyeHeightPixels.toFloat()
+        Matrix.perspectiveM(projectionMatrix, 0, 180f * sxrManager.deviceInfo.targetFovYRad / Math.PI.toFloat(), ratio, 0.1f, 1_000f)
 
         createSwapChain()
 
@@ -103,29 +100,31 @@ class STLRenderer(val activity : Activity, val surfaceView: SurfaceView) : Surfa
         // Setup render targets
 
         frameBufferHandles.indices.forEach { index ->
+
             // Framebuffer
+
             glGenFramebuffers(1, intArray, 0)
             frameBufferHandles[index] = intArray[0]
             glBindFramebuffer(GL_FRAMEBUFFER, frameBufferHandles[index])
 
             // Color
+
             glGenTextures(1, intArray, 0)
             renderColorTextures[index] = intArray[0]
             glBindTexture(GL_TEXTURE_2D, renderColorTextures[index])
-
             glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR)
             glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR)
             glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE)
             glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE)
-            glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, RenderTextureWidth, RenderTextureHeight, 0, GL_RGBA, GL_UNSIGNED_BYTE, null )
+            glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA,  sxrManager.deviceInfo.targetEyeWidthPixels,  sxrManager.deviceInfo.targetEyeHeightPixels, 0, GL_RGBA, GL_UNSIGNED_BYTE, null )
             glBindTexture(GL_TEXTURE_2D, 0)
 
             // Depth
-            glGenRenderbuffers(1, intArray, 0)
 
+            glGenRenderbuffers(1, intArray, 0)
             renderDepthTextures[index] = intArray[0]
             glBindRenderbuffer(GL_RENDERBUFFER, renderDepthTextures[index])
-            glRenderbufferStorage(GL_RENDERBUFFER, GL_DEPTH_COMPONENT24, RenderTextureWidth, RenderTextureHeight)
+            glRenderbufferStorage(GL_RENDERBUFFER, GL_DEPTH_COMPONENT24, sxrManager.deviceInfo.targetEyeWidthPixels,  sxrManager.deviceInfo.targetEyeHeightPixels)
             glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_RENDERBUFFER, renderDepthTextures[index])
             glFramebufferTexture(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, renderColorTextures[index], 0)
             glDrawBuffers(1, intArrayOf(GL_COLOR_ATTACHMENT0), 0)
@@ -157,7 +156,7 @@ class STLRenderer(val activity : Activity, val surfaceView: SurfaceView) : Surfa
                     glBindFramebuffer(GL_FRAMEBUFFER, frameBufferHandles[bufferIndex])
 
                     // Clear screen
-                    glViewport(0, 0, RenderTextureWidth, RenderTextureHeight)
+                    glViewport(0, 0, sxrManager.deviceInfo.targetEyeWidthPixels,  sxrManager.deviceInfo.targetEyeHeightPixels)
                     glClear(GL_COLOR_BUFFER_BIT or GL_DEPTH_BUFFER_BIT)
 
                     val headPoseState = sxrManager.startFrame(renderColorTextures[bufferIndex],  renderColorTextures[bufferIndex])
