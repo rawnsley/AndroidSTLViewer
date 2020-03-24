@@ -21,13 +21,13 @@ class STLModel(activity: Activity) {
         private val TAG = STLModel::class.java.simpleName
 
         // Small cube model
-//        private val TestModelUrl = URL("https://upload.wikimedia.org/wikipedia/commons/3/36/3D_model_of_a_Cube.stl")
-//        private const val TestModelSizeBytes = 684L
+        private val TestModelUrl = URL("https://upload.wikimedia.org/wikipedia/commons/3/36/3D_model_of_a_Cube.stl")
+        private const val TestModelSizeBytes = 684L
 
         // Large model from https://www.cc.gatech.edu/projects/large_models/blade.html
         // and converted to STL with MeshLab
-        private val TestModelUrl = URL("https://data.avncloud.com/dev/blade.stl")
-        private const val TestModelSizeBytes = 88269484L
+//        private val TestModelUrl = URL("https://data.avncloud.com/dev/blade.stl")
+//        private const val TestModelSizeBytes = 88269484L
     }
 
     private var modelRenderProgram : Int = 0
@@ -225,7 +225,7 @@ class STLModel(activity: Activity) {
         // Position, scale, and spin the model
 
         Matrix.setIdentityM(modelMatrix, 0)
-        Matrix.translateM(modelMatrix, 0, 0f, 0f, -1f)
+        Matrix.translateM(modelMatrix, 0, 0f, 0f, -2f)
         Matrix.rotateM(
             modelMatrix,
             0,
