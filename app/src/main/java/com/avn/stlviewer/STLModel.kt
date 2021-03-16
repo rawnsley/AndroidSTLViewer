@@ -215,6 +215,8 @@ class STLModel(activity: Activity) {
         modelScale = 1f / maxDimension
     }
 
+    var startTimeNs = -1L
+
     fun render(displayTimeNs : Long, viewMatrix : FloatArray, projectionMatrix : FloatArray) {
         // Load the STL asset if it's ready
         pendingAsset?.let {
@@ -226,10 +228,15 @@ class STLModel(activity: Activity) {
 
         Matrix.setIdentityM(modelMatrix, 0)
         Matrix.translateM(modelMatrix, 0, 0f, 0f, -2f)
+        // Use relative time to avoid underflow
+        if(startTimeNs < 0L) {
+            startTimeNs = displayTimeNs
+        }
+        val rotation = ((displayTimeNs - startTimeNs).toDouble() / 50_000_000.0).toFloat()
         Matrix.rotateM(
             modelMatrix,
             0,
-            (displayTimeNs.toDouble() / 49_997_117.0).toFloat(),
+            rotation,
             1f,
             0.5f,
             0f
