@@ -67,7 +67,7 @@ class STLRenderer(val activity : Activity, val surfaceView: SurfaceView) : Surfa
         sxrManager.destroy()
     }
 
-    override fun surfaceCreated(holder: SurfaceHolder?) {
+    override fun surfaceCreated(holder: SurfaceHolder) {
         Log.i(TAG, "surfaceCreated")
 
         eglManager = EGLManager(surfaceView)
@@ -80,12 +80,12 @@ class STLRenderer(val activity : Activity, val surfaceView: SurfaceView) : Surfa
         stlModel = STLModel(activity)
     }
 
-    override fun surfaceChanged(holder: SurfaceHolder?, format: Int, width: Int, height: Int) {
+    override fun surfaceChanged(holder: SurfaceHolder, format: Int, width: Int, height: Int) {
         Log.i(TAG, "surfaceChanged: format: $format, width: $width, height: $height")
         sxrManager.captureSurface()
     }
 
-    override fun surfaceDestroyed(holder: SurfaceHolder?) {
+    override fun surfaceDestroyed(holder: SurfaceHolder) {
         Log.i(TAG, "surfaceDestroyed")
         sxrManager.releaseSurface()
     }

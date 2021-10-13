@@ -8,9 +8,6 @@
     <uses-permission android:name="android.permission.READ_INTERNAL_STORAGE" />
     <uses-permission android:name="android.permission.WRITE_INTERNAL_STORAGE" />
 
-    <!--- Used by Skyworth APKs -->
-    <uses-feature android:name="android.software.vr.mode" android:required="true"/>
-
     <application
         android:allowBackup="true"
         android:icon="@mipmap/ic_launcher"
@@ -23,14 +20,9 @@
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
-                <!--- Used by Nibiru OS -->
-                <category android:name="com.nibiru.intent.category.NVR"/>
-                <!--- Used by Google VR SDK -->
-                <category android:name="com.google.intent.category.CARDBOARD" />
+                <category android:name="com.qti.intent.category.SNAPDRAGON_VR"/>
             </intent-filter>
         </activity>
-        <!--- Used by Skyworth APKs -->
-        <meta-data android:name="com.softwinner.vr.mode" android:value="vr"/>
     </application>
 
 </manifest>
