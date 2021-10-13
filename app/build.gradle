@@ -1,10 +1,8 @@
 apply plugin: 'com.android.application'
-
 apply plugin: 'kotlin-android'
 
-apply plugin: 'kotlin-android-extensions'
-
 // SXR expects this environment property to point to the SDK installation folder
+// Access to these libraries is restricted by Qualcomm so they can't be distributed here
 project.ext.SXRLocation = System.getenv('SXR_HOME') + '/sxrApi/libs'
 
 android {
@@ -34,7 +32,6 @@ dependencies {
     implementation fileTree(dir: 'libs', include: ['*.jar'])
     implementation"org.jetbrains.kotlin:kotlin-stdlib-jdk7:1.5.31"
     implementation 'androidx.core:core-ktx:1.6.0'
-    testImplementation 'junit:junit:4.13.2'
 
     debugImplementation(name: 'sxrApi-debug', ext: 'aar')
     releaseImplementation(name: 'sxrApi-release', ext: 'aar')
