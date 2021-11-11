@@ -7,6 +7,7 @@ import android.util.Log
 import android.view.Choreographer
 import android.view.SurfaceHolder
 import android.view.SurfaceView
+import com.qualcomm.sxrapi.SxrApi
 
 
 class STLRenderer(val activity : Activity, val surfaceView: SurfaceView) : SurfaceHolder.Callback {
@@ -15,9 +16,9 @@ class STLRenderer(val activity : Activity, val surfaceView: SurfaceView) : Surfa
         private val TAG = STLRenderer::class.java.simpleName
         // Number of texture buffers in the swap chain
         val FrameBufferCount = 2
+        val Eyes = arrayOf(SxrApi.sxrWhichEye.kLeftEye, SxrApi.sxrWhichEye.kRightEye)
         // Buffers to discard after rendering: https://community.arm.com/developer/tools-software/graphics/b/blog/posts/mali-performance-2-how-to-correctly-handle-framebuffers
         private val TransientFramebufferAttachments = intArrayOf(GL_DEPTH_ATTACHMENT, GL_STENCIL_ATTACHMENT)
-
     }
 
     // Qualcomm VR SDK wrapper
@@ -26,11 +27,11 @@ class STLRenderer(val activity : Activity, val surfaceView: SurfaceView) : Surfa
     // EGL context manager
     private lateinit var eglManager : EGLManager
 
-    // Render textures (double buffered)
+    // Render textures
 
-    private val frameBufferHandles = IntArray(FrameBufferCount)
-    private val renderColorTextures = IntArray(FrameBufferCount)
-    private val renderDepthTextures = IntArray(FrameBufferCount)
+    private val frameBufferHandles = arrayOf(IntArray(FrameBufferCount), IntArray(FrameBufferCount))
+    private val renderColorTextures = arrayOf(IntArray(FrameBufferCount), IntArray(FrameBufferCount))
+    private val renderDepthTextures = arrayOf(IntArray(FrameBufferCount), IntArray(FrameBufferCount))
 
     // Choreographer is used to schedule new frames
     private val choreographer: Choreographer = Choreographer.getInstance()
@@ -91,49 +92,50 @@ class STLRenderer(val activity : Activity, val surfaceView: SurfaceView) : Surfa
     }
 
 
-    fun createSwapChain() {
+    private fun createSwapChain() {
 
         val intArray = IntArray(1)
 
         // Setup render targets
+        Eyes.map{ it.ordinal }.forEach { eye ->
+            frameBufferHandles.indices.forEach { index ->
 
-        frameBufferHandles.indices.forEach { index ->
+                // Color
 
-            // Color
+                glGenTextures(1, intArray, 0)
+                renderColorTextures[eye][index] = intArray[0]
+                glBindTexture(GL_TEXTURE_2D, renderColorTextures[eye][index])
+                glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR)
+                glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR)
+                glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE)
+                glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE)
+                glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA,  sxrManager.deviceInfo.targetEyeWidthPixels,  sxrManager.deviceInfo.targetEyeHeightPixels, 0, GL_RGBA, GL_UNSIGNED_BYTE, null )
+                glBindTexture(GL_TEXTURE_2D, 0)
+                OpenGLUtil.assertNoGlError()
 
-            glGenTextures(1, intArray, 0)
-            renderColorTextures[index] = intArray[0]
-            glBindTexture(GL_TEXTURE_2D, renderColorTextures[index])
-            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR)
-            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR)
-            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE)
-            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE)
-            glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA,  sxrManager.deviceInfo.targetEyeWidthPixels,  sxrManager.deviceInfo.targetEyeHeightPixels, 0, GL_RGBA, GL_UNSIGNED_BYTE, null )
-            glBindTexture(GL_TEXTURE_2D, 0)
-            OpenGLUtil.assertNoGlError()
+                // Depth
 
-            // Depth
+                glGenTextures(1, intArray, 0)
+                renderDepthTextures[eye][index] = intArray[0]
+                glBindTexture(GL_TEXTURE_2D, renderDepthTextures[eye][index])
+                glTexImage2D(GL_TEXTURE_2D, 0, GLES30.GL_DEPTH_COMPONENT,  sxrManager.deviceInfo.targetEyeWidthPixels,  sxrManager.deviceInfo.targetEyeHeightPixels, 0, GL_DEPTH_COMPONENT, GL_UNSIGNED_INT, null )
+                glBindTexture(GL_TEXTURE_2D, 0)
+                OpenGLUtil.assertNoGlError()
 
-            glGenTextures(1, intArray, 0)
-            renderDepthTextures[index] = intArray[0]
-            glBindTexture(GL_TEXTURE_2D, renderDepthTextures[index])
-            glTexImage2D(GL_TEXTURE_2D, 0, GLES30.GL_DEPTH_COMPONENT,  sxrManager.deviceInfo.targetEyeWidthPixels,  sxrManager.deviceInfo.targetEyeHeightPixels, 0, GL_DEPTH_COMPONENT, GL_UNSIGNED_INT, null )
-            glBindTexture(GL_TEXTURE_2D, 0)
-            OpenGLUtil.assertNoGlError()
+                // Framebuffer
 
-            // Framebuffer
+                glGenFramebuffers(1, intArray, 0)
+                frameBufferHandles[eye][index] = intArray[0]
+                glBindFramebuffer(GL_FRAMEBUFFER, frameBufferHandles[eye][index])
+                glFramebufferTexture2D(GLES30.GL_FRAMEBUFFER, GLES30.GL_COLOR_ATTACHMENT0, GLES30.GL_TEXTURE_2D, renderColorTextures[eye][index], 0)
+                glFramebufferTexture2D(GLES30.GL_FRAMEBUFFER, GLES30.GL_DEPTH_ATTACHMENT, GLES30.GL_TEXTURE_2D, renderDepthTextures[eye][index], 0)
+                if(glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE) {
+                    throw Exception("Failed to create framebuffer")
+                }
+                glBindFramebuffer(GL_FRAMEBUFFER, 0)
 
-            glGenFramebuffers(1, intArray, 0)
-            frameBufferHandles[index] = intArray[0]
-            glBindFramebuffer(GL_FRAMEBUFFER, frameBufferHandles[index])
-            glFramebufferTexture2D(GLES30.GL_FRAMEBUFFER, GLES30.GL_COLOR_ATTACHMENT0, GLES30.GL_TEXTURE_2D, renderColorTextures[index], 0)
-            glFramebufferTexture2D(GLES30.GL_FRAMEBUFFER, GLES30.GL_DEPTH_ATTACHMENT, GLES30.GL_TEXTURE_2D, renderDepthTextures[index], 0)
-            if(glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE) {
-                throw Exception("Failed to create framebuffer")
+                OpenGLUtil.assertNoGlError()
             }
-            glBindFramebuffer(GL_FRAMEBUFFER, 0)
-
-            OpenGLUtil.assertNoGlError()
         }
     }
 
@@ -146,34 +148,40 @@ class STLRenderer(val activity : Activity, val surfaceView: SurfaceView) : Surfa
         var bufferIndex = 0
 
         override fun doFrame(frameTimeNanos: Long) {
-
             try {
                 if (sxrManager.isReady) {
+                    val frameParams = sxrManager.startFrame()
+                    if(frameParams != null && frameParams.headPoseState.isValid()) {
+                        // Select alternating texture buffers
+                        bufferIndex = ++bufferIndex % FrameBufferCount
+                        Eyes.forEach { eye ->
 
-                    // Select alternating texture buffers
-                    bufferIndex = ++bufferIndex % FrameBufferCount
+                            val eyeFrameBuffer = frameBufferHandles[eye.ordinal][bufferIndex]
+                            val eyeColorTexture = renderColorTextures[eye.ordinal][bufferIndex]
 
-                    glBindFramebuffer(GL_FRAMEBUFFER, frameBufferHandles[bufferIndex])
+                            glBindFramebuffer(GL_FRAMEBUFFER, eyeFrameBuffer)
+                            // Clear screen
+                            glViewport(0, 0, sxrManager.deviceInfo.targetEyeWidthPixels,  sxrManager.deviceInfo.targetEyeHeightPixels)
+                            glScissor(0, 0, sxrManager.deviceInfo.targetEyeWidthPixels,  sxrManager.deviceInfo.targetEyeHeightPixels)
+                            glClear(GL_COLOR_BUFFER_BIT or GL_DEPTH_BUFFER_BIT)
 
-                    // Clear screen
-                    glViewport(0, 0, sxrManager.deviceInfo.targetEyeWidthPixels,  sxrManager.deviceInfo.targetEyeHeightPixels)
-                    glScissor(0, 0, sxrManager.deviceInfo.targetEyeWidthPixels,  sxrManager.deviceInfo.targetEyeHeightPixels)
-                    glClear(GL_COLOR_BUFFER_BIT or GL_DEPTH_BUFFER_BIT)
+                            sxrManager.startEye(frameParams, eye, eyeColorTexture)
 
-                    val headPoseState = sxrManager.startFrame(renderColorTextures[bufferIndex],  renderColorTextures[bufferIndex])
-                    if(headPoseState.isValid()) {
-                        // Get camera position from head pose
-                        val viewMatrix = headPoseState.pose.rotation.quatToMatrix().queueInArray()
-                        // Render model
-                        stlModel.render(headPoseState.expectedDisplayTimeNs, viewMatrix, projectionMatrix)
-                        // Invalidate transient buffers (best practice)
-                        GLES30.glInvalidateFramebuffer(GLES31.GL_FRAMEBUFFER, TransientFramebufferAttachments.size, TransientFramebufferAttachments, 0)
-                        // Force GL instructions to finish so texture is complete for submission to SxrAPI
-                        GLES20.glFinish()
+                            // Get camera position from head pose
+                            val viewMatrix = frameParams.headPoseState.pose.rotation.quatToMatrix().queueInArray()
+                            // Render model
+                            stlModel.render(frameParams.headPoseState.expectedDisplayTimeNs, viewMatrix, projectionMatrix)
+                            // Invalidate transient buffers (best practice)
+                            GLES30.glInvalidateFramebuffer(GLES31.GL_FRAMEBUFFER, TransientFramebufferAttachments.size, TransientFramebufferAttachments, 0)
+                            // Force GL instructions to finish so texture is complete for submission to SxrAPI
+                            GLES20.glFinish()
 
+                            sxrManager.endEye(eye)
+                        }
+                        sxrManager.endFrame(frameParams)
+                    } else {
+                        Log.w(TAG, "Invalid pose state $frameParams")
                     }
-                    sxrManager.endFrame()
-
                     ++renderedFrames
 
                 }

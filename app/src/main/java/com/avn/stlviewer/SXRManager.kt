@@ -12,8 +12,8 @@ class SXRManager(val activity : Activity, surface: Surface)  {
     }
 
     private val sxrApiRenderer: SxrApi
-    private var sxrFrameParams: SxrApi.sxrFrameParams
     private var sxrBeginParams: SxrApi.sxrBeginParams
+    private var layoutCoords: SxrApi.sxrLayoutCoords
 
     val deviceInfo : SxrApi.sxrDeviceInfo
 
@@ -31,7 +31,7 @@ class SXRManager(val activity : Activity, surface: Surface)  {
 
         // Set layout coords to the whole lens view
 
-        val layoutCoords = sxrApiRenderer.sxrLayoutCoords()
+        layoutCoords = sxrApiRenderer.sxrLayoutCoords()
         layoutCoords.LowerLeftPos =  floatArrayOf(-1f, -1f, 0f, +1f) // {-1,-1,0,1}
         layoutCoords.LowerRightPos = floatArrayOf(+1f, -1f, 0f, +1f) // {1,-1,0,1}
         layoutCoords.UpperLeftPos =  floatArrayOf(-1f, +1f, 0f, +1f) // {-1,1,0,1}
@@ -44,26 +44,6 @@ class SXRManager(val activity : Activity, surface: Surface)  {
             0f, 0f, 1f, 0f,
             0f, 0f, 0f, 1f
         )
-
-        // Initialize frame parameters (will be updated and submitted every frame)
-
-        sxrFrameParams = sxrApiRenderer.sxrFrameParams()
-
-        sxrFrameParams.minVsyncs = 1
-
-        sxrFrameParams.renderLayers[0].imageType = SxrApi.sxrTextureType.kTypeTexture
-        sxrFrameParams.renderLayers[0].eyeMask = SxrApi.sxrEyeMask.kEyeMaskLeft
-        // Should possible be opaque (2)
-        sxrFrameParams.renderLayers[0].layerFlags = 0
-
-        sxrFrameParams.renderLayers[1].imageType = SxrApi.sxrTextureType.kTypeTexture
-        sxrFrameParams.renderLayers[1].eyeMask = SxrApi.sxrEyeMask.kEyeMaskRight
-        // Should possible be opaque (2)
-        sxrFrameParams.renderLayers[1].layerFlags = 0
-
-        sxrFrameParams.fieldOfView = 180f * deviceInfo.targetFovYRad / Math.PI.toFloat()
-        sxrFrameParams.renderLayers[0].imageCoords = layoutCoords
-        sxrFrameParams.renderLayers[1].imageCoords = layoutCoords
 
         // Initialize performance and tracking modes
 
@@ -131,21 +111,57 @@ class SXRManager(val activity : Activity, surface: Surface)  {
         SxrApi.sxrShutdown()
     }
 
-    fun startFrame(leftTexture : Int, rightTexture : Int) : SxrApi.sxrHeadPoseState {
+    var lastFrameIndex = 0
+
+    fun startFrame() : SxrApi.sxrFrameParams? {
         if(isInVRMode) {
-            sxrFrameParams.frameIndex++
-            sxrFrameParams.renderLayers[0].imageHandle = leftTexture
-            sxrFrameParams.renderLayers[1].imageHandle = rightTexture
-            sxrFrameParams.headPoseState = SxrApi.sxrGetPredictedHeadPose(SxrApi.sxrGetPredictedDisplayTime())
+            val predictedDisplayTime = SxrApi.sxrGetPredictedDisplayTime()
+            if(predictedDisplayTime < 1E12f) {
+
+                // Initialize frame parameters
+
+                val sxrFrameParams = sxrApiRenderer.sxrFrameParams()
+
+                sxrFrameParams.minVsyncs = 1
+
+                sxrFrameParams.renderLayers[0].imageType = SxrApi.sxrTextureType.kTypeTexture
+                sxrFrameParams.renderLayers[0].eyeMask = SxrApi.sxrEyeMask.kEyeMaskLeft
+                // Should possible be opaque (2)
+                sxrFrameParams.renderLayers[0].layerFlags = 0
+
+                sxrFrameParams.renderLayers[1].imageType = SxrApi.sxrTextureType.kTypeTexture
+                sxrFrameParams.renderLayers[1].eyeMask = SxrApi.sxrEyeMask.kEyeMaskRight
+                // Should possible be opaque (2)
+                sxrFrameParams.renderLayers[1].layerFlags = 0
+
+                sxrFrameParams.fieldOfView = 180f * deviceInfo.targetFovYRad / Math.PI.toFloat()
+                sxrFrameParams.renderLayers[0].imageCoords = layoutCoords
+                sxrFrameParams.renderLayers[1].imageCoords = layoutCoords
+
+                sxrFrameParams.frameIndex = lastFrameIndex++
+                sxrFrameParams.headPoseState = SxrApi.sxrGetPredictedHeadPose(predictedDisplayTime)
+
+                return sxrFrameParams
+            }
         }
-        return sxrFrameParams.headPoseState
+        return null
     }
 
-    fun endFrame() {
+    fun endFrame(sxrFrameParams: SxrApi.sxrFrameParams) {
         if(isInVRMode) {
             SxrApi.sxrSubmitFrame(activity, sxrFrameParams)
         }
     }
+
+    fun startEye(sxrFrameParams: SxrApi.sxrFrameParams, eyeIndex: SxrApi.sxrWhichEye, eyeTexture: Int) {
+        sxrFrameParams.renderLayers[eyeIndex.ordinal].imageHandle = eyeTexture
+        SxrApi.sxrBeginEye(eyeIndex)
+    }
+
+    fun endEye(eyeIndex: SxrApi.sxrWhichEye) {
+        SxrApi.sxrEndEye(eyeIndex)
+    }
+
 }
 
 // Extensions
